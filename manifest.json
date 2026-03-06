@@ -1,0 +1,93 @@
+const FOLDER_ID = "15vJP20FVexzAIfc-8uiSIrTTKbSbG593";
+const SHEET_NAME = "Data";
+
+// 【変更】GETリクエスト（図鑑を開いた時）に、画面ではなく「JSONデータ」を返す
+function doGet(e) {
+  const data = getInsects();
+  return ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// 【変更】POSTリクエスト（登録ボタンを押した時）に、データを受け取って保存する
+function doPost(e) {
+  try {
+    const data = JSON.parse(e.postData.contents);
+    const msg = saveData(data);
+    return ContentService.createTextOutput(JSON.stringify({ status: "success", message: msg }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+// 以下はこれまでの機能そのままです
+function uploadToDrive(base64Data, fileName) {
+  if (!base64Data) return "";
+  const folder = DriveApp.getFolderById(FOLDER_ID);
+  const contentType = base64Data.substring(5, base64Data.indexOf(';'));
+  const bytes = Utilities.base64Decode(base64Data.split(',')[1]);
+  const blob = Utilities.newBlob(bytes, contentType, fileName);
+  const file = folder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return file.getId();
+}
+
+function saveData(data) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  const isEdit = data.id ? true : false;
+  let targetRowIndex = -1;
+
+  if (isEdit) {
+    const values = sheet.getDataRange().getValues();
+    for (let i = 1; i < values.length; i++) {
+      if (values[i][0] === data.id) {
+        targetRowIndex = i + 1;
+        break;
+      }
+    }
+  }
+
+  let headerImgId = data.existingHeaderImgId || "";
+  if (data.headerImg) headerImgId = uploadToDrive(data.headerImg, 'header_' + data.name);
+  
+  let extraImageData = [];
+  if (data.existingExtraImages) {
+    try { extraImageData = JSON.parse(data.existingExtraImages); } catch(e){}
+  }
+  if (data.extraImages && data.extraImages.length > 0) {
+    data.extraImages.forEach((item, index) => {
+      if (item.base64) {
+        const id = uploadToDrive(item.base64, 'extra_' + data.name + '_' + index);
+        extraImageData.push({ id: id, caption: item.caption });
+      }
+    });
+  }
+
+  const row = [
+    isEdit ? data.id : Utilities.getUuid(), data.name, headerImgId, data.headerCaption,
+    data.family, data.subfamily, data.genus, data.scientificName, data.size,
+    JSON.stringify(data.locations), data.distribution, data.seasons.join(','),
+    data.description, JSON.stringify(extraImageData), data.notes, new Date()
+  ];
+  
+  if (isEdit && targetRowIndex !== -1) {
+    sheet.getRange(targetRowIndex, 1, 1, row.length).setValues([row]);
+    return "図鑑の「" + data.name + "」を更新しました！";
+  } else {
+    sheet.appendRow(row);
+    return "図鑑に「" + data.name + "」を新規登録しました！";
+  }
+}
+
+function getInsects() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  const values = sheet.getDataRange().getDisplayValues();
+  if (values.length <= 1) return [];
+  const header = values.shift();
+  return values.map(row => {
+    let obj = {};
+    header.forEach((h, i) => obj[h] = row[i]);
+    return obj;
+  });
+}
