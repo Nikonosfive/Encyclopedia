@@ -14,12 +14,34 @@ self.addEventListener('install', event => {
 });
 
 self.addEventListener('fetch', event => {
-  // GASのAPIへの通信はキャッシュせず、常にネットワーク（または独自スクリプト）で処理する
-  if (event.request.url.includes('script.google.com') || event.request.url.includes('script.googleusercontent.com')) {
+  const url = event.request.url;
+
+  // 1. GASのAPIへの通信はキャッシュせず、常にネットワーク（または独自スクリプト）で処理する
+  if (url.includes('script.google.com') || url.includes('script.googleusercontent.com')) {
     return; 
   }
+
+  // 2. Google Driveの画像をキャッシュする（キャッシュ優先＆裏で更新）
+  if (url.includes('drive.google.com/thumbnail')) {
+    event.respondWith(
+      caches.open('insect-images-cache-v1').then(cache => {
+        return cache.match(event.request).then(response => {
+          // ネットワークへもリクエストを送り、成功したらキャッシュを最新に上書きする
+          const fetchPromise = fetch(event.request).then(networkResponse => {
+            cache.put(event.request, networkResponse.clone());
+            return networkResponse;
+          }).catch(() => {
+            // オフライン時はエラーを無視して進める
+          });
+          // キャッシュがあれば即座に返し、なければネットワーク待機
+          return response || fetchPromise; 
+        });
+      })
+    );
+    return;
+  }
   
-  // HTMLやCSSはキャッシュがあれば即座に返す（オフライン起動の要）
+  // 3. HTMLやCSSはキャッシュがあれば即座に返す（オフライン起動の要）
   event.respondWith(
     caches.match(event.request).then(response => {
       return response || fetch(event.request);
