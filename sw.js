@@ -14,9 +14,14 @@ self.addEventListener('install', event => {
 });
 
 self.addEventListener('fetch', event => {
+  // ★追加：データの送信（POST）はキャッシュシステムを通さず、直接ネットワークへ送る！
+  if (event.request.method !== 'GET') {
+    return;
+  }
+
   const url = event.request.url;
 
-  // 1. GASのAPIへの通信はキャッシュせず、常にネットワーク（または独自スクリプト）で処理する
+  // 1. GASのAPIへの通信はキャッシュせず、常にネットワークで処理する
   if (url.includes('script.google.com') || url.includes('script.googleusercontent.com')) {
     return; 
   }
@@ -26,14 +31,12 @@ self.addEventListener('fetch', event => {
     event.respondWith(
       caches.open('insect-images-cache-v1').then(cache => {
         return cache.match(event.request).then(response => {
-          // ネットワークへもリクエストを送り、成功したらキャッシュを最新に上書きする
           const fetchPromise = fetch(event.request).then(networkResponse => {
             cache.put(event.request, networkResponse.clone());
             return networkResponse;
           }).catch(() => {
             // オフライン時はエラーを無視して進める
           });
-          // キャッシュがあれば即座に返し、なければネットワーク待機
           return response || fetchPromise; 
         });
       })
