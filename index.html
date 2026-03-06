@@ -102,7 +102,7 @@
             <img id="headerPreview"><input type="text" name="headerCaption" class="form-control mt-2" placeholder="画像のキャプション">
           </div>
           <label class="form-label fw-bold mt-2">追加画像</label><div id="extraImagesContainer"></div>
-          <button type="button" class="btn btn-light border w-100 mt-2" onclick="addExtraImage()">＋ 画像を追加する</button>
+          <button type="button" id="addExtraImageBtn" class="btn btn-light border w-100 mt-2" onclick="addExtraImage()">＋ 画像を追加する</button>
         </div>
         <div class="card p-4 shadow-sm">
           <div class="section-title">採集データ・分布</div>
@@ -158,8 +158,11 @@
     const GAS_API_URL = "https://script.googleusercontent.com/macros/echo?user_content_key=AY5xjrSSODAUc-0iAtzxRIALd6cahwTe39WbX5mBpdEyjgyJpyKl6ywGYJ06W-v5MU7rKd5pD9NyXhA4XdsXS7DdlhPBNNNDW-hrJG4wN7n5F5fBGosf26eaWHz4JTnCsN722inSCcqhnmsct9nxE6lwGP-y1M0iRv8eYnJZ8kbqFysWqgOcTDbdS_LkrMQQSE4KPfaEAYHuySfhAJed5aUlWJvFSHeU-9UsbsUfKjKRzp2CSkXXkBfIEBjdSJAu8nErM52jKQGkwgb-IPsEa5gqxwyVShVkJhSBgBh2mE8-&lib=MN6iCij_T5u5BOFircjUEPblq6KTKnKhf";
     
     // 簡易ログインの設定
-    const LOGIN_ID = "admin";   
-    const LOGIN_PW = "password";  
+    const ACCOUNTS = {
+      "admin": "password",
+      "enc": "tengyu",
+      "memberA": "7777"
+    }; 
 
     let allInsects = [];
     let modalInstance = null;
@@ -189,14 +192,24 @@
     function login() {
       const id = document.getElementById('loginId').value;
       const pw = document.getElementById('loginPw').value;
-      if(id === LOGIN_ID && pw === LOGIN_PW) {
+      
+      // 入力されたIDがACCOUNTSに存在し、パスワードが一致するか判定
+      if(ACCOUNTS[id] && ACCOUNTS[id] === pw) {
         localStorage.setItem('isLoggedIn', 'true');
+        localStorage.setItem('loginUser', id); // 誰がログインしたか記録
         document.getElementById('loginError').style.display = 'none';
         checkLogin();
       } else {
         document.getElementById('loginError').style.display = 'block';
       }
     }
+
+    // パスワード入力欄で「エンターキー」を押した時にもログイン処理を実行
+    window.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('loginPw').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') login();
+      });
+    });
 
     function logout() {
       localStorage.removeItem('isLoggedIn');
@@ -206,13 +219,24 @@
     // === オフライン＆同期処理 ===
     function updateNetworkStatus() {
       const banner = document.getElementById('networkBanner');
+      const mainImgFile = document.getElementById('mainImgFile');
+      const addExtraImageBtn = document.getElementById('addExtraImageBtn');
+
       if (navigator.onLine) {
         banner.style.display = 'none';
-        syncOfflineData();
+        // オンライン時は画像のアップロード機能を有効化
+        if (mainImgFile) mainImgFile.disabled = false;
+        if (addExtraImageBtn) addExtraImageBtn.disabled = false;
+        
+        syncOfflineData(); // 未送信データの同期
       } else {
-        banner.innerText = "⚡ オフラインモード（データは一時保存されます）";
+        banner.innerText = "⚡ オフライン（容量制限のため、テキストのみ一時保存できます）";
         banner.style.backgroundColor = "#ff9800";
         banner.style.display = 'block';
+        
+        // オフライン時は画像アップロード機能をロック（無効化）
+        if (mainImgFile) mainImgFile.disabled = true;
+        if (addExtraImageBtn) addExtraImageBtn.disabled = true;
       }
     }
     window.addEventListener('online', updateNetworkStatus);
