@@ -57,7 +57,7 @@
             <div class="row g-2">
               <div class="col-md-3"><label class="form-label small fw-bold">亜科</label><select id="subfamilyFilter" class="form-select form-select-sm"><option value="">すべて</option></select></div>
               <div class="col-md-3"><label class="form-label small fw-bold">分布</label><input type="text" id="distSearch" class="form-control form-control-sm" placeholder="例：北海道"></div>
-              <div class="col-md-6"><label class="form-label small fw-bold">フリーワード（説明・備考）</label><input type="text" id="freeWordSearch" class="form-control form-control-sm" placeholder="キーワード"></div>
+              <div class="col-md-6"><label class="form-label small fw-bold">説明・備考から検索</label><input type="text" id="freeWordSearch" class="form-control form-control-sm" placeholder="キーワード"></div>
             </div>
           </div>
         </div>
@@ -126,7 +126,7 @@
         <div class="modal-header d-flex justify-content-between align-items-center" style="background-color: #2d5a27; color: white;">
           <h5 class="modal-title fw-bold" id="m_name">昆虫詳細</h5>
           <div>
-            <button type="button" id="editBtn" class="btn btn-sm btn-light text-success fw-bold me-2">✏️ 編集する</button>
+            <button type="button" id="editBtn" class="btn btn-sm btn-light text-success fw-bold me-2">編集</button>
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
           </div>
         </div>
@@ -230,7 +230,7 @@
         
         syncOfflineData(); // 未送信データの同期
       } else {
-        banner.innerText = "⚡ オフライン（容量制限のため、テキストのみ一時保存できます）";
+        banner.innerText = "オフラインモード";
         banner.style.backgroundColor = "#ff9800";
         banner.style.display = 'block';
         
@@ -247,7 +247,7 @@
       if (queue.length === 0) return;
 
       const banner = document.getElementById('networkBanner');
-      banner.innerText = "🔄 通信回復。保留中データ(" + queue.length + "件)を同期中...";
+      banner.innerText = "通信回復　保留中データ(" + queue.length + "件)を同期中...";
       banner.style.backgroundColor = "#2196F3";
       banner.style.display = 'block';
 
@@ -255,13 +255,15 @@
         try {
           const response = await fetch(GAS_API_URL, {
             method: 'POST',
+            headers: { 'Content-Type': 'text/plain' }, // ★追加: GASのセキュリティ(CORS)回避
+            redirect: 'follow', // ★追加: GASのリダイレクトを確実に追跡
             body: JSON.stringify(queue[i])
           });
           const result = await response.json();
           if (result.status !== "success") throw new Error(result.message);
         } catch (e) {
           localStorage.setItem('insectSyncQueue', JSON.stringify(queue.slice(i)));
-          banner.innerText = "❌ 同期失敗。後で再試行します。";
+          banner.innerText = "同期失敗";
           banner.style.backgroundColor = "#f44336";
           setTimeout(() => banner.style.display = 'none', 3000);
           return;
@@ -269,7 +271,7 @@
       }
       
       localStorage.setItem('insectSyncQueue', '[]');
-      banner.innerText = "✅ 同期が完了しました！";
+      banner.innerText = "同期完了";
       banner.style.backgroundColor = "#4CAF50";
       setTimeout(() => banner.style.display = 'none', 3000);
       if(document.getElementById('viewPageArea').style.display === 'block') loadInsects();
@@ -569,6 +571,8 @@
 
         fetch(GAS_API_URL, {
           method: 'POST',
+          headers: { 'Content-Type': 'text/plain' }, // ★追加
+          redirect: 'follow', // ★追加
           body: JSON.stringify(formData)
         })
         .then(res => res.json())
