@@ -1,30 +1,564 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>昆虫図鑑</title>
-    <style>
-        body, html {
-            margin: 0;
-            padding: 0;
-            height: 100%;
-            width: 100%;
-            overflow: hidden; 
-        }
-        iframe {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            border: none; /* 枠線を消す */
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>電子昆虫図鑑</title>
+  <link rel="manifest" href="manifest.json">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background-color: #f4f7f6; font-family: sans-serif; padding-bottom: 50px; }
+    .search-section { background: white; border-bottom: 1px solid #dee2e6; position: sticky; top: 0; z-index: 100; padding: 15px 0; }
+    .insect-card { border: none; border-radius: 12px; overflow: hidden; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.08); transition: transform 0.2s; height: 100%; background: white; }
+    .insect-card:hover { transform: translateY(-5px); box-shadow: 0 8px 20px rgba(0,0,0,0.12); }
+    .card-img-top { height: 180px; object-fit: cover; background-color: #eee; }
+    .scientific-name { font-style: italic; color: #666; font-size: 0.85rem; }
+    .family-badge { background-color: #2d5a27; color: white; font-size: 0.75rem; padding: 4px 8px; border-radius: 4px; display: inline-block; }
+    .info-label { font-weight: bold; color: #2d5a27; width: 90px; display: inline-block; }
+    .section-title { border-left: 5px solid #198754; padding-left: 10px; margin: 20px 0; font-weight: bold; }
+    #headerPreview { max-width: 100%; height: 200px; object-fit: cover; border-radius: 8px; display: none; margin-top: 10px; }
+    #networkBanner { position: fixed; top: 0; left: 0; width: 100%; z-index: 9999; text-align: center; padding: 8px; font-weight: bold; display: none; color: white; }
+  </style>
 </head>
 <body>
 
-    <iframe src="https://script.google.com/macros/s/AKfycbwljh6-Y97-HvOlH-45W3mw1XmcjwQ8s4e1m950MaNqaFZehoMGHlUc8YD9xo8kXyTQ9g/exec" allowfullscreen></iframe>
+  <div id="networkBanner"></div>
 
+  <div id="loginPageArea" style="display: none; max-width: 400px; margin: 100px auto; padding: 20px;">
+    <h3 class="text-center mb-4 text-success fw-bold">電子昆虫図鑑 ログイン</h3>
+    <div class="card p-4 shadow-sm border-0" style="border-radius: 12px;">
+      <label class="form-label small fw-bold">ユーザーID</label>
+      <input type="text" id="loginId" class="form-control mb-3" placeholder="IDを入力">
+      <label class="form-label small fw-bold">パスワード</label>
+      <input type="password" id="loginPw" class="form-control mb-4" placeholder="パスワードを入力">
+      <button onclick="login()" class="btn btn-success w-100 fw-bold py-2">ログイン</button>
+      <div id="loginError" class="text-danger mt-3 small text-center fw-bold" style="display:none;">IDまたはパスワードが違います</div>
+    </div>
+  </div>
+
+  <div id="viewPageArea" style="display: none;">
+    <div class="search-section shadow-sm" style="margin-top: 30px;">
+      <div class="container">
+        <div class="row g-2">
+          <div class="col-md-4"><input type="text" id="searchInput" class="form-control" placeholder="種名や学名で基本検索..."></div>
+          <div class="col-md-2 col-6"><select id="familyFilter" class="form-select"><option value="">すべての科</option></select></div>
+          <div class="col-md-2 col-6"><select id="sortOrder" class="form-select"><option value="newest">新しい順</option><option value="name">名前順</option></select></div>
+          <div class="col-md-2 col-6"><button class="btn btn-outline-secondary w-100" type="button" data-bs-toggle="collapse" data-bs-target="#advancedSearch">詳細検索 ▼</button></div>
+          <div class="col-md-2 col-6"><button onclick="switchPage('index')" class="btn btn-success w-100 fw-bold">＋ 新規登録</button></div>
+        </div>
+        <div class="collapse mt-3" id="advancedSearch">
+          <div class="card card-body bg-light border-0">
+            <div class="row g-2">
+              <div class="col-md-3"><label class="form-label small fw-bold">亜科</label><select id="subfamilyFilter" class="form-select form-select-sm"><option value="">すべて</option></select></div>
+              <div class="col-md-3"><label class="form-label small fw-bold">分布</label><input type="text" id="distSearch" class="form-control form-control-sm" placeholder="例：北海道"></div>
+              <div class="col-md-6"><label class="form-label small fw-bold">フリーワード（説明・備考）</label><input type="text" id="freeWordSearch" class="form-control form-control-sm" placeholder="キーワード"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="container my-4">
+      <div class="d-flex justify-content-between align-items-end mb-3">
+        <h5 class="mb-0 text-success fw-bold" id="dataCountTitle">図鑑を読み込み中...</h5>
+        <button onclick="logout()" class="btn btn-sm btn-outline-secondary">ログアウト</button>
+      </div>
+      <div id="loading" class="text-center py-5"><div class="spinner-border text-success" role="status"></div></div>
+      <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-4" id="insectGrid"></div>
+    </div>
+  </div>
+
+  <div id="indexPageArea" style="display: none; padding-top: 30px;">
+    <div class="container">
+      <div class="d-flex justify-content-between align-items-center mb-3 mt-3">
+        <h2 class="h4 mb-0 fw-bold" id="formTitle">昆虫データ新規登録</h2>
+        <button type="button" onclick="switchPage('view')" class="btn btn-outline-primary btn-sm fw-bold">図鑑に戻る</button>
+      </div>
+      <form id="insectForm">
+        <input type="hidden" id="insectId" name="id" value="">
+        <input type="hidden" id="existingHeaderImgId" name="existingHeaderImgId" value="">
+        <input type="hidden" id="existingExtraImages" name="existingExtraImages" value="">
+
+        <div class="card p-4 shadow-sm">
+          <div class="section-title">基本情報・分類</div>
+          <div class="mb-3"><label class="form-label fw-bold">種名 <span class="text-danger">*</span></label><input type="text" name="name" class="form-control" required placeholder="例：ミヤマクワガタ"></div>
+          <div class="row g-2">
+            <div class="col-6"><input type="text" name="family" class="form-control" placeholder="科名 (例:クワガタムシ科)"></div>
+            <div class="col-6"><input type="text" name="subfamily" class="form-control" placeholder="亜科名"></div>
+            <div class="col-6"><input type="text" name="genus" class="form-control" placeholder="属名"></div>
+            <div class="col-6"><input type="text" name="scientificName" class="form-control" placeholder="学名"></div>
+            <div class="col-12"><input type="text" name="size" class="form-control" placeholder="サイズ (例: 30-70mm)"></div>
+          </div>
+        </div>
+        <div class="card p-4 shadow-sm">
+          <div class="section-title">画像</div>
+          <div class="mb-3">
+            <label class="form-label fw-bold">見出し画像</label><input type="file" id="mainImgFile" class="form-control mb-2" accept="image/*">
+            <img id="headerPreview"><input type="text" name="headerCaption" class="form-control mt-2" placeholder="画像のキャプション">
+          </div>
+          <label class="form-label fw-bold mt-2">追加画像</label><div id="extraImagesContainer"></div>
+          <button type="button" class="btn btn-light border w-100 mt-2" onclick="addExtraImage()">＋ 画像を追加する</button>
+        </div>
+        <div class="card p-4 shadow-sm">
+          <div class="section-title">採集データ・分布</div>
+          <div class="mb-3"><label class="form-label fw-bold">分布</label><input type="text" name="distribution" class="form-control" placeholder="例：北海道〜九州"></div>
+          <label class="form-label fw-bold">採集地</label><div id="locationList"></div>
+          <label class="form-label fw-bold mt-3">採集シーズン</label><div class="d-flex flex-wrap gap-2" id="seasonContainer"></div>
+        </div>
+        <div class="card p-4 shadow-sm">
+          <div class="section-title">説明・備考</div>
+          <textarea name="description" class="form-control mb-3" rows="4" placeholder="特徴や生態など"></textarea>
+          <input type="text" name="notes" class="form-control" placeholder="備考（個人メモなど）">
+        </div>
+        <button type="submit" id="submitBtn" class="btn btn-success w-100 py-3 fw-bold shadow-sm mb-5 fs-5">図鑑に登録する</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal fade" id="detailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header d-flex justify-content-between align-items-center" style="background-color: #2d5a27; color: white;">
+          <h5 class="modal-title fw-bold" id="m_name">昆虫詳細</h5>
+          <div>
+            <button type="button" id="editBtn" class="btn btn-sm btn-light text-success fw-bold me-2">✏️ 編集する</button>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+        </div>
+        <div class="modal-body">
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <img id="m_img" src="" style="width:100%; border-radius:8px; margin-bottom:10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+              <div id="m_caption" class="text-muted small mb-3 text-center"></div>
+              <div id="m_extra_images" class="d-flex flex-wrap gap-2 justify-content-center"></div>
+            </div>
+            <div class="col-md-6">
+              <p class="scientific-name mb-1 fs-5" id="m_sci_name"></p>
+              <div class="mb-3"><span class="family-badge" id="m_family"></span> <span id="m_subfamily" class="small text-muted ms-2 fw-bold"></span></div>
+              <p class="mb-1 border-bottom pb-1"><span class="info-label">サイズ</span><span id="m_size"></span></p>
+              <p class="mb-1 border-bottom pb-1"><span class="info-label">シーズン</span><span id="m_season"></span></p>
+              <p class="mb-1 border-bottom pb-1"><span class="info-label">分布</span><span id="m_distribution"></span></p>
+              <div class="mb-3 border-bottom pb-1"><span class="info-label">採集地</span><div id="m_locations" class="ms-3 mt-1 small"></div></div>
+              <p class="info-label mb-1">説明</p><p id="m_desc" class="small text-dark bg-light p-2 rounded" style="white-space: pre-wrap;"></p>
+              <div id="m_notes" class="small text-muted pt-2 mt-2"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const GAS_API_URL = "https://script.googleusercontent.com/macros/echo?user_content_key=AY5xjrSSODAUc-0iAtzxRIALd6cahwTe39WbX5mBpdEyjgyJpyKl6ywGYJ06W-v5MU7rKd5pD9NyXhA4XdsXS7DdlhPBNNNDW-hrJG4wN7n5F5fBGosf26eaWHz4JTnCsN722inSCcqhnmsct9nxE6lwGP-y1M0iRv8eYnJZ8kbqFysWqgOcTDbdS_LkrMQQSE4KPfaEAYHuySfhAJed5aUlWJvFSHeU-9UsbsUfKjKRzp2CSkXXkBfIEBjdSJAu8nErM52jKQGkwgb-IPsEa5gqxwyVShVkJhSBgBh2mE8-&lib=MN6iCij_T5u5BOFircjUEPblq6KTKnKhf";
+    
+    // 簡易ログインの設定
+    const LOGIN_ID = "admin";   
+    const LOGIN_PW = "password";  
+
+    let allInsects = [];
+    let modalInstance = null;
+    const driveBaseUrl = "https://drive.google.com/thumbnail?sz=w800&id=";
+
+    // Service Worker（オフライン機能）の登録
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then(reg => console.log('PWA オフライン機能が有効になりました', reg))
+          .catch(err => console.log('SW 登録失敗', err));
+      });
+    }
+
+    // === ログイン機能 ===
+    function checkLogin() {
+      if(localStorage.getItem('isLoggedIn') === 'true') {
+        document.getElementById('loginPageArea').style.display = 'none';
+        switchPage('view');
+      } else {
+        document.getElementById('viewPageArea').style.display = 'none';
+        document.getElementById('indexPageArea').style.display = 'none';
+        document.getElementById('loginPageArea').style.display = 'block';
+      }
+    }
+
+    function login() {
+      const id = document.getElementById('loginId').value;
+      const pw = document.getElementById('loginPw').value;
+      if(id === LOGIN_ID && pw === LOGIN_PW) {
+        localStorage.setItem('isLoggedIn', 'true');
+        document.getElementById('loginError').style.display = 'none';
+        checkLogin();
+      } else {
+        document.getElementById('loginError').style.display = 'block';
+      }
+    }
+
+    function logout() {
+      localStorage.removeItem('isLoggedIn');
+      checkLogin();
+    }
+
+    // === オフライン＆同期処理 ===
+    function updateNetworkStatus() {
+      const banner = document.getElementById('networkBanner');
+      if (navigator.onLine) {
+        banner.style.display = 'none';
+        syncOfflineData();
+      } else {
+        banner.innerText = "⚡ オフラインモード（データは一時保存されます）";
+        banner.style.backgroundColor = "#ff9800";
+        banner.style.display = 'block';
+      }
+    }
+    window.addEventListener('online', updateNetworkStatus);
+    window.addEventListener('offline', updateNetworkStatus);
+
+    async function syncOfflineData() {
+      const queue = JSON.parse(localStorage.getItem('insectSyncQueue') || '[]');
+      if (queue.length === 0) return;
+
+      const banner = document.getElementById('networkBanner');
+      banner.innerText = "🔄 通信回復。保留中データ(" + queue.length + "件)を同期中...";
+      banner.style.backgroundColor = "#2196F3";
+      banner.style.display = 'block';
+
+      for (let i = 0; i < queue.length; i++) {
+        try {
+          const response = await fetch(GAS_API_URL, {
+            method: 'POST',
+            body: JSON.stringify(queue[i])
+          });
+          const result = await response.json();
+          if (result.status !== "success") throw new Error(result.message);
+        } catch (e) {
+          localStorage.setItem('insectSyncQueue', JSON.stringify(queue.slice(i)));
+          banner.innerText = "❌ 同期失敗。後で再試行します。";
+          banner.style.backgroundColor = "#f44336";
+          setTimeout(() => banner.style.display = 'none', 3000);
+          return;
+        }
+      }
+      
+      localStorage.setItem('insectSyncQueue', '[]');
+      banner.innerText = "✅ 同期が完了しました！";
+      banner.style.backgroundColor = "#4CAF50";
+      setTimeout(() => banner.style.display = 'none', 3000);
+      if(document.getElementById('viewPageArea').style.display === 'block') loadInsects();
+    }
+
+    // === 画面切り替え ===
+    function switchPage(page, editId = null) {
+      document.getElementById('viewPageArea').style.display = 'none';
+      document.getElementById('indexPageArea').style.display = 'none';
+      window.scrollTo(0, 0);
+
+      if (page === 'view') {
+        document.getElementById('viewPageArea').style.display = 'block';
+        loadInsects();
+      } else if (page === 'index') {
+        document.getElementById('indexPageArea').style.display = 'block';
+        initForm(editId);
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      updateNetworkStatus();
+      modalInstance = new bootstrap.Modal(document.getElementById('detailModal'));
+      
+      const seasonDiv = document.getElementById('seasonContainer');
+      for (let i = 1; i <= 12; i++) {
+        seasonDiv.innerHTML += '<div class="form-check form-check-inline"><input class="form-check-input season-check" type="checkbox" value="' + i + '月" id="m' + i + '"><label class="form-check-label" for="m' + i + '">' + i + '月</label></div>';
+      }
+      checkLogin(); // アプリ起動時にログイン状態をチェック
+    });
+
+    // === API通信（図鑑データ取得） ===
+    function loadInsects() {
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('insectGrid').innerHTML = '';
+      
+      if (navigator.onLine) {
+        fetch(GAS_API_URL)
+          .then(response => response.json())
+          .then(data => {
+            localStorage.setItem('cachedInsects', JSON.stringify(data));
+            renderData(data);
+          })
+          .catch(err => loadFromCache(err.message));
+      } else {
+        loadFromCache("オフラインのため");
+      }
+    }
+
+    function loadFromCache(msg) {
+      const cached = localStorage.getItem('cachedInsects');
+      if (cached) {
+        renderData(JSON.parse(cached));
+        document.getElementById('dataCountTitle').innerText += " (キャッシュ表示)";
+      } else {
+        document.getElementById('loading').innerHTML = '<span class="text-danger">データ取得不可 (' + msg + ')。キャッシュもありません。</span>';
+      }
+    }
+
+    function renderData(data) {
+      document.getElementById('loading').style.display = 'none';
+      if (!data || data.length === 0) {
+        document.getElementById('insectGrid').innerHTML = '<div class="col-12 text-center text-muted">データがありません。</div>';
+        document.getElementById('dataCountTitle').innerText = "登録数: 0件";
+        return;
+      }
+      allInsects = data;
+      
+      const selectFamily = document.getElementById('familyFilter');
+      const selectSubfamily = document.getElementById('subfamilyFilter');
+      selectFamily.innerHTML = '<option value="">すべての科</option>';
+      selectSubfamily.innerHTML = '<option value="">すべての亜科</option>';
+      
+      const families = [], subfamilies = [];
+      data.forEach(i => { 
+        if (i['科名'] && !families.includes(i['科名'])) families.push(i['科名']); 
+        if (i['亜科名'] && !subfamilies.includes(i['亜科名'])) subfamilies.push(i['亜科名']);
+      });
+      families.forEach(f => { const opt = document.createElement('option'); opt.value = f; opt.textContent = f; selectFamily.appendChild(opt); });
+      subfamilies.forEach(sf => { const opt = document.createElement('option'); opt.value = sf; opt.textContent = sf; selectSubfamily.appendChild(opt); });
+
+      updateDisplay();
+    }
+
+    function updateDisplay() {
+      const searchTxt = document.getElementById('searchInput').value.toLowerCase();
+      const familyFilt = document.getElementById('familyFilter').value;
+      const subfamilyFilt = document.getElementById('subfamilyFilter').value;
+      const distSearch = document.getElementById('distSearch').value.toLowerCase();
+      const freeWordSearch = document.getElementById('freeWordSearch').value.toLowerCase();
+      const sort = document.getElementById('sortOrder').value;
+      const grid = document.getElementById('insectGrid');
+      grid.innerHTML = ''; 
+
+      let filtered = [];
+      for (let index = 0; index < allInsects.length; index++) {
+        const i = allInsects[index];
+        const nameMatch = (i['種名'] || "").toLowerCase().includes(searchTxt) || (i['学名'] || "").toLowerCase().includes(searchTxt);
+        const familyMatch = (familyFilt === "") || ((i['科名'] || "") === familyFilt);
+        const subfamilyMatch = (subfamilyFilt === "") || ((i['亜科名'] || "") === subfamilyFilt);
+        const distMatch = (distSearch === "") || ((i['分布'] || "").toLowerCase().includes(distSearch));
+        const freeWordMatch = (freeWordSearch === "") || (((i['説明'] || "") + " " + (i['備考'] || "")).toLowerCase().includes(freeWordSearch));
+        if (nameMatch && familyMatch && subfamilyMatch && distMatch && freeWordMatch) filtered.push({ insect: i, originalIndex: index });
+      }
+
+      if (sort === 'name') filtered.sort((a, b) => (a.insect['種名'] || "").localeCompare(b.insect['種名'], 'ja'));
+      else filtered.reverse();
+
+      document.getElementById('dataCountTitle').innerText = filtered.length + " 件の昆虫";
+
+      filtered.forEach(item => {
+        const i = item.insect;
+        let firstLoc = "不明";
+        try { const locs = JSON.parse(i['採集地JSON'] || '[]'); if (locs.length > 0 && locs[0].name) firstLoc = locs[0].name; } catch(e) {}
+        const imgSrc = i['見出し画像ID'] ? (driveBaseUrl + i['見出し画像ID']) : 'https://via.placeholder.com/300x200?text=No+Image';
+        const col = document.createElement('div');
+        col.className = 'col';
+        col.innerHTML = '<div class="insect-card" onclick="openModal(' + item.originalIndex + ')">' +
+            '<img src="' + imgSrc + '" class="card-img-top"><div class="card-body">' +
+            '<div class="mb-1"><span class="family-badge">' + (i['科名'] || '未分類') + '</span></div>' +
+            '<h6 class="fw-bold mb-0">' + (i['種名'] || '無題') + '</h6>' +
+            '<div class="scientific-name">' + (i['学名'] || '') + '</div>' +
+            '<div class="mt-2 small text-muted">📍 ' + firstLoc + '</div></div></div>';
+        grid.appendChild(col);
+      });
+      if (filtered.length === 0) grid.innerHTML = '<div class="col-12 text-center text-muted">該当する昆虫が見つかりません。</div>';
+    }
+
+    document.getElementById('searchInput').addEventListener('input', updateDisplay);
+    document.getElementById('familyFilter').addEventListener('change', updateDisplay);
+    document.getElementById('subfamilyFilter').addEventListener('change', updateDisplay);
+    document.getElementById('distSearch').addEventListener('input', updateDisplay);
+    document.getElementById('freeWordSearch').addEventListener('input', updateDisplay);
+    document.getElementById('sortOrder').addEventListener('change', updateDisplay);
+
+    function openModal(index) {
+      const i = allInsects[index];
+      document.getElementById('editBtn').onclick = () => { modalInstance.hide(); switchPage('index', i['ID']); };
+      
+      document.getElementById('m_name').textContent = i['種名'] || '無題';
+      document.getElementById('m_img').src = i['見出し画像ID'] ? (driveBaseUrl + i['見出し画像ID']) : 'https://via.placeholder.com/300x200?text=No+Image';
+      document.getElementById('m_caption').textContent = i['見出しキャプション'] || '';
+      document.getElementById('m_sci_name').textContent = i['学名'] || '';
+      document.getElementById('m_family').textContent = i['科名'] || '未分類';
+      document.getElementById('m_subfamily').textContent = i['亜科名'] ? "(" + i['亜科名'] + "亜科)" : '';
+      document.getElementById('m_size').textContent = (i['サイズ'] || '-') + " mm";
+      document.getElementById('m_season').textContent = i['採集シーズン'] || '-';
+      document.getElementById('m_distribution').textContent = i['分布'] || '記載なし';
+      document.getElementById('m_desc').textContent = i['説明'] || '記載なし';
+      document.getElementById('m_notes').textContent = i['備考'] ? "※備考: " + i['備考'] : '';
+
+      let locHTML = "";
+      try {
+        const locs = JSON.parse(i['採集地JSON'] || '[]');
+        if (locs.length === 0) { locHTML = "-"; } 
+        else {
+          locs.forEach(l => {
+            locHTML += "・" + (l.name || "場所不明");
+            if (l.coord) locHTML += ' <a href="https://maps.google.com/maps?q=' + encodeURIComponent(l.coord).replace(/%2C/g, ',') + '" target="_blank" class="text-primary text-decoration-none">🗺️地図</a>';
+            locHTML += "<br>";
+          });
+        }
+      } catch(e) { locHTML = "データなし"; }
+      document.getElementById('m_locations').innerHTML = locHTML;
+
+      const extraDiv = document.getElementById('m_extra_images');
+      extraDiv.innerHTML = '';
+      try {
+        const extras = JSON.parse(i['追加画像JSON'] || '[]');
+        if (extras.length > 0) {
+          if (i['見出し画像ID']) {
+            const mainThumb = document.createElement('img'); mainThumb.src = driveBaseUrl + i['見出し画像ID'];
+            mainThumb.style.cssText = 'width:60px; height:60px; object-fit:cover; cursor:pointer; border-radius:4px; border:2px solid #2d5a27;';
+            mainThumb.onclick = () => { document.getElementById('m_img').src = mainThumb.src; document.getElementById('m_caption').textContent = i['見出しキャプション'] || ''; };
+            extraDiv.appendChild(mainThumb);
+          }
+          extras.forEach(img => {
+            const thumb = document.createElement('img'); thumb.src = driveBaseUrl + img.id;
+            thumb.style.cssText = 'width:60px; height:60px; object-fit:cover; cursor:pointer; border-radius:4px; border:1px solid #ccc;';
+            thumb.onclick = () => { document.getElementById('m_img').src = thumb.src; document.getElementById('m_caption').textContent = img.caption || ''; };
+            extraDiv.appendChild(thumb);
+          });
+        }
+      } catch(e) {}
+      modalInstance.show();
+    }
+
+    // === 登録・編集フォームの処理 ===
+    function initForm(editId) {
+      document.getElementById('insectForm').reset();
+      document.getElementById('locationList').innerHTML = '';
+      document.getElementById('extraImagesContainer').innerHTML = '';
+      document.getElementById('headerPreview').style.display = 'none';
+      document.querySelectorAll('.season-check').forEach(cb => cb.checked = false);
+      
+      if (editId) {
+        document.getElementById('formTitle').innerText = "昆虫データの編集";
+        document.getElementById('submitBtn').innerText = "上書き保存する";
+        document.getElementById('submitBtn').classList.replace('btn-success', 'btn-primary');
+        const data = allInsects.find(i => i['ID'] === editId);
+        if (data) populateForm(data);
+      } else {
+        document.getElementById('formTitle').innerText = "昆虫データ新規登録";
+        document.getElementById('submitBtn').innerText = "図鑑に登録する";
+        document.getElementById('submitBtn').classList.replace('btn-primary', 'btn-success');
+        document.getElementById('insectId').value = '';
+        document.getElementById('existingHeaderImgId').value = '';
+        document.getElementById('existingExtraImages').value = '';
+        addLocation(); 
+      }
+    }
+
+    function populateForm(data) {
+      document.getElementById('insectId').value = data['ID'];
+      document.getElementById('existingHeaderImgId').value = data['見出し画像ID'];
+      document.getElementById('existingExtraImages').value = data['追加画像JSON'];
+      const form = document.getElementById('insectForm');
+      form.name.value = data['種名'] || ''; form.family.value = data['科名'] || '';
+      form.subfamily.value = data['亜科名'] || ''; form.genus.value = data['属名'] || '';
+      form.scientificName.value = data['学名'] || ''; form.size.value = data['サイズ'] || '';
+      form.distribution.value = data['分布'] || ''; form.headerCaption.value = data['見出しキャプション'] || '';
+      form.description.value = data['説明'] || ''; form.notes.value = data['備考'] || '';
+      
+      if (data['採集シーズン']) {
+        const seasons = data['採集シーズン'].split(',');
+        document.querySelectorAll('.season-check').forEach(cb => { if (seasons.includes(cb.value)) cb.checked = true; });
+      }
+      try {
+        const locs = JSON.parse(data['採集地JSON'] || '[]');
+        locs.forEach(loc => addLocation(loc.name, loc.coord));
+        if (locs.length === 0) addLocation();
+      } catch(e) { addLocation(); }
+    }
+
+    const toBase64 = file => new Promise((resolve, reject) => {
+      const reader = new FileReader(); reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result); reader.onerror = error => reject(error);
+    });
+
+    document.getElementById('mainImgFile').addEventListener('change', async (e) => {
+      if(e.target.files[0]) {
+        const img = document.getElementById('headerPreview');
+        img.src = await toBase64(e.target.files[0]); img.style.display = 'block';
+      }
+    });
+
+    function addLocation(name = "", coord = "") {
+      const div = document.createElement('div'); div.className = 'row g-2 mb-2';
+      div.innerHTML = '<div class="col-5"><input type="text" class="form-control loc-name" placeholder="場所名" value="' + name + '"></div>' +
+        '<div class="col-5"><input type="text" class="form-control loc-coord" placeholder="座標" value="' + coord + '"></div>' +
+        '<div class="col-2"><button type="button" class="btn btn-outline-danger w-100" onclick="this.parentElement.parentElement.remove()">×</button></div>';
+      document.getElementById('locationList').appendChild(div);
+    }
+
+    function addExtraImage() {
+      const div = document.createElement('div'); div.className = 'border p-2 mb-2 bg-light rounded';
+      div.innerHTML = '<input type="file" class="form-control form-control-sm mb-1 extra-img-file" accept="image/*">' +
+        '<input type="text" class="form-control form-control-sm extra-img-caption" placeholder="キャプション">' +
+        '<button type="button" class="btn btn-link btn-sm text-danger p-0 mt-1" onclick="this.parentElement.remove()">削除</button>';
+      document.getElementById('extraImagesContainer').appendChild(div);
+    }
+
+    // === API通信（データ保存） ===
+    document.getElementById('insectForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true; btn.innerText = "データ処理中...";
+
+      try {
+        const extraImages = [];
+        for (let el of document.querySelectorAll('#extraImagesContainer > div')) {
+          const file = el.querySelector('.extra-img-file').files[0];
+          if (file) { extraImages.push({ base64: await toBase64(file), caption: el.querySelector('.extra-img-caption').value }); }
+        }
+
+        const formData = {
+          id: document.getElementById('insectId').value, existingHeaderImgId: document.getElementById('existingHeaderImgId').value,
+          existingExtraImages: document.getElementById('existingExtraImages').value,
+          name: this.name.value, family: this.family.value, subfamily: this.subfamily.value,
+          genus: this.genus.value, scientificName: this.scientificName.value, size: this.size.value, distribution: this.distribution.value,
+          headerCaption: this.headerCaption.value, description: this.description.value, notes: this.notes.value,
+          headerImg: document.getElementById('mainImgFile').files[0] ? await toBase64(document.getElementById('mainImgFile').files[0]) : null,
+          locations: Array.from(document.querySelectorAll('#locationList .row')).map(el => ({ name: el.querySelector('.loc-name').value, coord: el.querySelector('.loc-coord').value })).filter(loc => loc.name || loc.coord),
+          seasons: Array.from(document.querySelectorAll('.season-check:checked')).map(el => el.value), extraImages: extraImages
+        };
+
+        if (!navigator.onLine) {
+          const queue = JSON.parse(localStorage.getItem('insectSyncQueue') || '[]');
+          queue.push(formData);
+          localStorage.setItem('insectSyncQueue', JSON.stringify(queue));
+          
+          alert("📡 オフラインのため、端末に一時保存しました！\n通信回復後に自動送信されます。");
+          btn.disabled = false;
+          switchPage('view');
+          return;
+        }
+
+        fetch(GAS_API_URL, {
+          method: 'POST',
+          body: JSON.stringify(formData)
+        })
+        .then(res => res.json())
+        .then(result => {
+          if(result.status === 'success') {
+            alert(result.message);
+            btn.disabled = false;
+            switchPage('view'); 
+          } else {
+            alert("サーバーエラー: " + result.message);
+            btn.disabled = false; btn.innerText = "再試行";
+          }
+        })
+        .catch(err => { 
+          alert("通信エラー: " + err); 
+          btn.disabled = false; btn.innerText = "再試行"; 
+        });
+          
+      } catch (err) { alert("内部エラー: " + err); btn.disabled = false; btn.innerText = "再試行"; }
+    });
+  </script>
 </body>
 </html>
